@@ -33,8 +33,8 @@ class StandardFCNet(nn.Module, BaseModel):
 
     def forward(self, x):
         x = Variable(torch.FloatTensor(x))
-        x = F.tanh(self.fc1(x))
-        x = F.tanh(self.fc2(x))
+        x = torch.tanh(self.fc1(x))
+        x = torch.tanh(self.fc2(x))
         x = self.fc3(x)
         return x
 
