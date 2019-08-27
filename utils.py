@@ -1,6 +1,11 @@
 import numpy as np
 import torch
 import logging
+import sobol_seq
+import torch.multiprocessing as mp
+from scipy.stats import norm
+from rqmc_distributions import Normal_RQMC
+
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s: %(message)s')
 logger = logging.getLogger('MAIN')
@@ -138,7 +143,6 @@ class Evaluator:
             if done:
                 return total_reward, steps
 
-
 def fitness_shift(x):
     x = np.asarray(x).flatten()
     ranks = np.empty(len(x))
@@ -164,3 +168,20 @@ class Adam:
         m_ = self.m / (1 - self.beta1_t)
         v_ = self.v / (1 - self.beta2_t)
         return m_ / (np.sqrt(v_) + self.epsilon)
+
+class NoiseGenerator:
+    def __init__(self, size, noise_type='mc'):
+        self.size = size
+        self.noise_type = noise_type
+        if self.noise_type == 'rqmc':
+            self.sampler = Normal_RQMC(np.zeros(size), np.ones(size))
+        self.lock = mp.Lock()
+
+    def sample(self):
+        with self.lock:
+            if self.noise_type == 'mc':
+                return np.random.randn(self.size)
+            elif self.noise_type == 'rqmc':
+                return self.sampler.sample(1).numpy()
+            else:
+                raise Exception('unknown noise type')

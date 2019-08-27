@@ -1,4 +1,5 @@
 import torch
+import argparse
 import torch.multiprocessing as mp
 from torch.multiprocessing import SimpleQueue
 import numpy as np
@@ -7,14 +8,20 @@ import pickle
 from config import *
 import time
 
+def parse_args(args=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--noise', default='mc', choices=['mc', 'rqmc'])
+    return parser.parse_args(args)
+
 class Worker(mp.Process):
-    def __init__(self, id, param, state_normalizer, task_q, result_q, stop, config):
+    def __init__(self, id, param, state_normalizer, task_q, result_q, stop, noise_generator, config):
         mp.Process.__init__(self)
         self.id = id
         self.task_q = task_q
         self.param = param
         self.result_q = result_q
         self.stop = stop
+        self.noise_generator = noise_generator
         self.config = config
         self.evaluator = Evaluator(config, state_normalizer)
 
@@ -26,7 +33,8 @@ class Worker(mp.Process):
                 continue
             self.task_q.get()
             disturbed_param = np.copy(self.param.numpy().flatten())
-            epsilon = np.random.randn(len(disturbed_param))
+            #epsilon = np.random.randn(len(disturbed_param))
+            epsilon = self.noise_generator.sample()
             disturbed_param += config.sigma * epsilon
             fitness, steps = self.evaluator.eval(disturbed_param)
             self.result_q.put([epsilon, -fitness, steps])
@@ -38,10 +46,12 @@ def train(config):
     stats = SharedStats(config.state_dim)
     param = torch.FloatTensor(torch.from_numpy(config.initial_weight))
     param.share_memory_()
+    n_params = len(param.numpy().flatten())
+    noise_generator = NoiseGenerator(n_params, config.args.noise)
     normalizers = [StaticNormalizer(config.state_dim) for _ in range(config.num_workers)]
     for normalizer in normalizers:
         normalizer.offline_stats.load(stats)
-    workers = [Worker(id, param, normalizers[id], task_queue, result_queue, stop, config) for id in range(config.num_workers)]
+    workers = [Worker(id, param, normalizers[id], task_queue, result_queue, stop, noise_generator, config) for id in range(config.num_workers)]
     for w in workers: w.start()
 
     training_rewards = []
@@ -123,7 +133,8 @@ def multi_runs(config):
         with open('data/%s-stats-%s.bin' % (config.tag, config.task), 'wb') as f:
             pickle.dump(stats, f)
 
-def all_tasks():
+def main(args=None):
+    args = parse_args(args) 
     configs = []
 
     hidden_size = 64
@@ -138,6 +149,7 @@ def all_tasks():
 
     ps = []
     for cf in configs:
+        cf.args = args
         cf.num_workers = 8
         cf.pop_size = 64
         cf.sigma = 0.1
@@ -145,10 +157,10 @@ def all_tasks():
         # cf.action_noise_std = 0.02
         cf.max_steps = int(1e7)
         cf.tag = 'NES-%d' % (cf.hidden_size)
-        ps.append(mp.Process(target=multi_runs, args=(cf, )))
+        ps.append(mp.Process(target=multi_runs, args=(cf,)))
 
     for p in ps: p.start()
     for p in ps: p.join()
 
 if __name__ == '__main__':
-    all_tasks()
+    main()
