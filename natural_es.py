@@ -47,7 +47,7 @@ def train(config):
     param = torch.FloatTensor(torch.from_numpy(config.initial_weight))
     param.share_memory_()
     n_params = len(param.numpy().flatten())
-    noise_generator = NoiseGenerator(n_params, config.args.noise)
+    noise_generator = NoiseGenerator(n_params, config.args.noise, config.pop_size)
     normalizers = [StaticNormalizer(config.state_dim) for _ in range(config.num_workers)]
     for normalizer in normalizers:
         normalizer.offline_stats.load(stats)
@@ -138,14 +138,14 @@ def main(args=None):
     configs = []
 
     hidden_size = 64
-    # config = PendulumConfig(hidden_size)
-    # configs.append(config)
+    config = PendulumConfig(hidden_size)
+    configs.append(config)
     # config = ContinuousLunarLanderConfig(hidden_size)
     # configs.append(config)
-    config = BipedalWalkerConfig(hidden_size)
-    configs.append(config)
-    config = BipedalWalkerHardcore(hidden_size)
-    configs.append(config)
+    #config = BipedalWalkerConfig(hidden_size)
+    #configs.append(config)
+    #config = BipedalWalkerHardcore(hidden_size)
+    #configs.append(config)
 
     ps = []
     for cf in configs:

@@ -170,18 +170,25 @@ class Adam:
         return m_ / (np.sqrt(v_) + self.epsilon)
 
 class NoiseGenerator:
-    def __init__(self, size, noise_type='mc'):
-        self.size = size
+    def __init__(self, noise_size, sample_size, noise_type='mc'):
+        self.noise_size = noise_size
+        self.sample_size = sample_size
         self.noise_type = noise_type
         if self.noise_type == 'rqmc':
-            self.sampler = Normal_RQMC(np.zeros(size), np.ones(size))
+            self.sampler = Normal_RQMC(torch.zeros(noise_size), torch.ones(noise_size))
+            self.noises = self.sampler.sample(sample_size)
+            self.i = 0
         self.lock = mp.Lock()
 
     def sample(self):
         with self.lock:
             if self.noise_type == 'mc':
-                return np.random.randn(self.size)
+                return np.random.randn(self.noise_size)
             elif self.noise_type == 'rqmc':
-                return self.sampler.sample(1).numpy()
+                noise = self.noises[self.i]
+                self.i += 1
+                if self.i % self.sample_size:
+                    self.noises = self.sampler.sample(self.sample_size)
+                return noise
             else:
                 raise Exception('unknown noise type')
