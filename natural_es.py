@@ -11,6 +11,10 @@ import time
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--noise', default='mc', choices=['mc', 'rqmc'])
+    parser.add_argument('--hidden_size', type=int, default=64)
+    parser.add_argument('--opt', default='adam', choices=['sgd', 'adam'])
+    parser.add_argument('--reward_type', default='rank', choices=['rank', 'raw'])
+    parser.add_argument('--suffix', type=str, default=None)
     return parser.parse_args(args)
 
 class Worker(mp.Process):
@@ -47,7 +51,7 @@ def train(config):
     param = torch.FloatTensor(torch.from_numpy(config.initial_weight))
     param.share_memory_()
     n_params = len(param.numpy().flatten())
-    noise_generator = NoiseGenerator(n_params, config.args.noise, config.pop_size)
+    noise_generator = NoiseGenerator(n_params, config.pop_size, config.args.noise)
     normalizers = [StaticNormalizer(config.state_dim) for _ in range(config.num_workers)]
     for normalizer in normalizers:
         normalizer.offline_stats.load(stats)
@@ -97,11 +101,13 @@ def train(config):
             normalizer.online_stats.zero()
         for normalizer in normalizers:
             normalizer.offline_stats.load(stats)
-        rewards = fitness_shift(rewards)
+        if config.args.reward_type == 'rank':
+            rewards = fitness_shift(rewards)
         gradient = np.asarray(epsilons) * np.asarray(rewards).reshape((-1, 1))
         gradient = np.mean(gradient, 0) / config.sigma
         gradient -= config.weight_decay * gradient
-        gradient = config.opt.update(gradient)
+        if config.args.opt == 'adam':
+            gradient = config.opt.update(gradient)
         gradient = torch.FloatTensor(gradient)
         param.add_(config.learning_rate * gradient)
 
@@ -121,7 +127,8 @@ def test(config, solution, stats):
 
 
 def multi_runs(config):
-    fh = logging.FileHandler('log/%s-%s.txt' % (config.tag, config.task))
+    suffix = '' if config.args.suffix is None else '-{}'.format(config.args.suffix)
+    fh = logging.FileHandler('log/%s-%s%s.txt' % (config.tag, config.task, suffix))
     fh.setLevel(logging.DEBUG)
     logger.addHandler(fh)
 
@@ -130,21 +137,20 @@ def multi_runs(config):
     for run in range(runs):
         logger.info('Run %d' % (run))
         stats.append(train(config))
-        with open('data/%s-stats-%s.bin' % (config.tag, config.task), 'wb') as f:
+        with open('data/%s-stats-%s%s.bin' % (config.tag, config.task, suffix), 'wb') as f:
             pickle.dump(stats, f)
 
 def main(args=None):
     args = parse_args(args) 
     configs = []
 
-    hidden_size = 64
-    config = PendulumConfig(hidden_size)
+    config = PendulumConfig(args.hidden_size)
     configs.append(config)
-    # config = ContinuousLunarLanderConfig(hidden_size)
+    # config = ContinuousLunarLanderConfig(args.hidden_size)
     # configs.append(config)
-    #config = BipedalWalkerConfig(hidden_size)
+    #config = BipedalWalkerConfig(args.hidden_size)
     #configs.append(config)
-    #config = BipedalWalkerHardcore(hidden_size)
+    #config = BipedalWalkerHardcore(args.hidden_size)
     #configs.append(config)
 
     ps = []

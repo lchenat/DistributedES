@@ -176,7 +176,7 @@ class NoiseGenerator:
         self.noise_type = noise_type
         if self.noise_type == 'rqmc':
             self.sampler = Normal_RQMC(torch.zeros(noise_size), torch.ones(noise_size))
-            self.noises = self.sampler.sample(sample_size)
+            self.noises = self.sampler.sample(torch.Size([sample_size])).numpy()
             self.i = 0
         self.lock = mp.Lock()
 
@@ -187,8 +187,9 @@ class NoiseGenerator:
             elif self.noise_type == 'rqmc':
                 noise = self.noises[self.i]
                 self.i += 1
-                if self.i % self.sample_size:
-                    self.noises = self.sampler.sample(self.sample_size)
+                if self.i % self.sample_size == 0:
+                    self.noises = self.sampler.sample(torch.Size([self.sample_size])).numpy()
+                    self.i = 0
                 return noise
             else:
                 raise Exception('unknown noise type')
