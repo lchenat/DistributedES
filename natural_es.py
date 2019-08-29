@@ -10,7 +10,7 @@ import time
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--noise', default='mc', choices=['mc', 'rqmc'])
+    parser.add_argument('--noise', default='mc', choices=['mc', 'rqmc', 'lss'])
     parser.add_argument('--hidden_size', type=int, default=64)
     parser.add_argument('--opt', default='adam', choices=['sgd', 'adam'])
     parser.add_argument('--reward_type', default='rank', choices=['rank', 'raw'])
@@ -51,7 +51,11 @@ def train(config):
     param = torch.FloatTensor(torch.from_numpy(config.initial_weight))
     param.share_memory_()
     n_params = len(param.numpy().flatten())
-    noise_generator = NoiseGenerator(n_params, config.pop_size, config.args.noise)
+    if config.args.noise_type == 'lss':
+        noise_sizes = [cofig.state_dim * config.hidden_size, config.hidden_size * config.hidden_size, config.hidden_size * config.action_dim]
+    else:
+        noise_sizes = None
+    noise_generator = NoiseGenerator(n_params, config.pop_size, config.args.noise, noise_sizes=noise_sizes)
     normalizers = [StaticNormalizer(config.state_dim) for _ in range(config.num_workers)]
     for normalizer in normalizers:
         normalizer.offline_stats.load(stats)

@@ -169,14 +169,31 @@ class Adam:
         v_ = self.v / (1 - self.beta2_t)
         return m_ / (np.sqrt(v_) + self.epsilon)
 
+class LatinSupercube:
+    def __init__(self, noise_sizes):
+        self.noise_sizes = noise_sizes
+
+    def sample(self, sample_size):
+        noises = []
+        for noise_size in self.noise_sizes:
+            noise = np.random.permutation(Normal_RQMC(torch.zeros(noise_size), torch.ones(noise_size)).sample(torch.Size([sample_size])).data.numpy())
+            noises.append(noise)
+        noises = np.concatenate(noises, 1)
+        return noises
+
 class NoiseGenerator:
-    def __init__(self, noise_size, sample_size, noise_type='mc'):
+    def __init__(self, noise_size, sample_size, noise_type='mc', noise_sizes=None):
+        print('noise size={}'.format(noise_size))
         self.noise_size = noise_size
         self.sample_size = sample_size
         self.noise_type = noise_type
         if self.noise_type == 'rqmc':
             self.sampler = Normal_RQMC(torch.zeros(noise_size), torch.ones(noise_size))
             self.noises = self.sampler.sample(torch.Size([sample_size])).numpy()
+            self.i = 0
+        elif self.noise_type == 'lss':
+            self.sampler = LatinSupercube(noise_sizes)
+            self.noises = self.sampler.sample(sample_size)
             self.i = 0
         self.lock = mp.Lock()
 
@@ -191,5 +208,11 @@ class NoiseGenerator:
                     self.noises = self.sampler.sample(torch.Size([self.sample_size])).numpy()
                     self.i = 0
                 return noise
+            elif self.noise_type == 'lss':
+                noise = self.noises[self.i]
+                self.i += 1
+                if self.i % self.sample_size == 0:
+                    self.noises = self.sampler.sample(self.sample_size)
+                    self.i = 0
             else:
                 raise Exception('unknown noise type')
